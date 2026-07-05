@@ -1,0 +1,25 @@
+risk_management:
+  initial_bankroll: 1000.00          # GBP — mirrors the user's real allocation
+  currency: "GBP"
+  max_risk_per_trade_percent: 1.0    # £10 max planned loss per signal
+  hard_stop_loss_percent: 2.0        # SL never further than 2% from entry
+  daily_loss_limit_percent: 3.0      # £30 realized+unrealized => no new signals today
+  weekly_loss_limit_percent: 6.0     # £60 => no new signals this week
+  min_risk_reward_ratio: 2.0
+  max_concurrent_positions: 5
+  cash_preservation_floor_gbp: 940.00
+  min_stop_distance_spread_multiple: 3.0   # eToro spread realism
+  position_sizing_method: "fixed_fractional"
+  # units = (balance_gbp * risk_pct/100) / abs(entry - stop)     [FX-adjusted to GBP]
+  # signal card also shows eToro "amount" = units * entry, converted to GBP,
+  # and checks it against eToro minimum trade sizes per instrument class
+
+signals:
+  default_expiry_hours: 4
+  daily_scan_time_utc: "07:30"       # pre-London-open scan of the watchlist
+  weekly_profit_target_gbp: 150.00   # MEASUREMENT ONLY — never loosens risk or forces signals
+  ranking_weights:
+    rr_normalized: 0.4
+    confidence: 0.3
+    trend_alignment: 0.3
+  max_cards_per_scan: 3

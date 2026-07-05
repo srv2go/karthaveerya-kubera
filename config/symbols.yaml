@@ -1,0 +1,19 @@
+# Watchlist + mapping: data-source ticker <-> eToro display name,
+# instrument class, and typical spread in basis points (bps) of price.
+watchlist:
+  - data_symbol: "AAPL"
+    etoro_name: "Apple"
+    instrument_class: "stock"
+    typical_spread_bps: 3
+  - data_symbol: "MSFT"
+    etoro_name: "Microsoft"
+    instrument_class: "stock"
+    typical_spread_bps: 3
+  - data_symbol: "SPY"
+    etoro_name: "SPDR S&P 500 ETF"
+    instrument_class: "etf"
+    typical_spread_bps: 2
+  - data_symbol: "BTC/USD"
+    etoro_name: "Bitcoin"
+    instrument_class: "crypto"
+    typical_spread_bps: 25
