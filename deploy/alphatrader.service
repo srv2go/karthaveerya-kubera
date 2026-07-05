@@ -1,0 +1,21 @@
+[Unit]
+Description=AlphaTrader HITL — signal-only trading assistant (Telegram bot + scheduler)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User/WorkingDirectory to match where you cloned the repo and created the venv.
+User=alphatrader
+WorkingDirectory=/opt/alphatrader/karthaveerya-kubera
+EnvironmentFile=/opt/alphatrader/karthaveerya-kubera/.env
+ExecStart=/opt/alphatrader/karthaveerya-kubera/.venv/bin/python -m alphatrader
+Restart=on-failure
+RestartSec=10
+# Hardening (safe to remove if it causes issues on your distro).
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/alphatrader/karthaveerya-kubera
+
+[Install]
+WantedBy=multi-user.target

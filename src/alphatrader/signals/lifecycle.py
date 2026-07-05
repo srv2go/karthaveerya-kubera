@@ -11,6 +11,7 @@ import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+from alphatrader.data.market import MarketDataService
 from alphatrader.ledger import position_pnl
 from alphatrader.models import Action, AgentStateName, SignalStatus
 from alphatrader.risk.engine import RiskConfig
@@ -186,6 +187,49 @@ def refresh_agent_state(
     week_start_balance = _period_start_balance(conn, initial_bankroll, week_start)
 
     result = evaluate_breakers(risk_cfg, balance, day_start_balance, week_start_balance)
+    conn.execute(
+        "UPDATE agent_state SET state = ?, reason = ?, updated_at = ? WHERE id = 1",
+        (result.state.value, result.reason, now.isoformat()),
+    )
+    conn.commit()
+    return result
+
+
+def mark_to_market(
+    conn: sqlite3.Connection,
+    risk_cfg: RiskConfig,
+    initial_bankroll: float,
+    market: MarketDataService,
+    now: datetime | None = None,
+) -> BreakerResult:
+    """Intraday breaker check (the 15-min scheduler job): feeds live quotes for
+    open positions into equity, on top of realized P&L, so breakers can fire
+    between daily/closed-based checks. Persists the result to `agent_state`
+    exactly like `refresh_agent_state`; never touches eToro or any broker.
+    """
+    now = now or datetime.now(UTC)
+    day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
+    week_start = day_start - timedelta(days=now.weekday())
+
+    balance = current_balance_gbp(conn, initial_bankroll)
+    day_start_balance = _period_start_balance(conn, initial_bankroll, day_start)
+    week_start_balance = _period_start_balance(conn, initial_bankroll, week_start)
+
+    open_positions = conn.execute(
+        "SELECT symbol, action, units, entry_price FROM positions WHERE closed_at IS NULL"
+    ).fetchall()
+    unrealized = 0.0
+    for pos in open_positions:
+        try:
+            price = market.get_quote(pos["symbol"]).price
+        except Exception:
+            continue
+        unrealized += position_pnl(
+            Action(pos["action"]), pos["units"], pos["entry_price"], price
+        )
+    equity = balance + unrealized
+
+    result = evaluate_breakers(risk_cfg, equity, day_start_balance, week_start_balance)
     conn.execute(
         "UPDATE agent_state SET state = ?, reason = ?, updated_at = ? WHERE id = 1",
         (result.state.value, result.reason, now.isoformat()),

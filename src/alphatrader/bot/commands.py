@@ -85,7 +85,7 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-def _card_keyboard(signal_id: int) -> InlineKeyboardMarkup:
+def card_keyboard(signal_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
@@ -128,7 +128,7 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     for card in persisted:
         await update.message.reply_text(
-            render(card), reply_markup=_card_keyboard(card.signal_id)
+            render(card), reply_markup=card_keyboard(card.signal_id)
         )
 
 

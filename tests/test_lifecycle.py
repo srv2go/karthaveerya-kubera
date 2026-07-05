@@ -3,9 +3,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from alphatrader import db
-from alphatrader.models import AgentStateName
+from alphatrader.models import AgentStateName, Quote
 from alphatrader.signals import lifecycle
 from alphatrader.signals.cards import SignalCard
+
+
+class _FakeMarket:
+    def __init__(self, quotes: dict[str, float]):
+        self._quotes = quotes
+
+    def get_quote(self, symbol: str) -> Quote:
+        return Quote(symbol=symbol, price=self._quotes[symbol], timestamp=datetime.now(UTC))
 
 
 @pytest.fixture
@@ -193,3 +201,33 @@ def test_resume_stays_halted_if_breaker_still_breached(seeded_db, risk_config):
         result = lifecycle.resume(conn, risk_config, risk_config.initial_bankroll)
         assert result.state == AgentStateName.HALTED_DAILY
         assert "daily loss" in result.reason
+
+
+def test_mark_to_market_includes_unrealized_pnl_from_open_positions(seeded_db, risk_config):
+    with db.get_connection(seeded_db) as conn:
+        [card] = lifecycle.persist_cards(
+            conn, [_card(action="buy", entry=100.0, stop_loss=96.0, take_profit=112.0, units=10.0)]
+        )
+        lifecycle.mark_filled(conn, card.signal_id, fill_price=100.0)
+
+        # Realized P&L is still zero (position open); a live quote showing a
+        # £40 unrealized loss should still be enough to trip the daily breaker.
+        market = _FakeMarket(quotes={"AAPL": 96.0})
+        result = lifecycle.mark_to_market(conn, risk_config, risk_config.initial_bankroll, market)
+
+        assert result.state == AgentStateName.HALTED_DAILY
+        assert "daily loss" in result.reason
+        assert lifecycle.get_agent_state(conn) == AgentStateName.HALTED_DAILY
+
+
+def test_mark_to_market_stays_active_when_unrealized_pnl_is_small(seeded_db, risk_config):
+    with db.get_connection(seeded_db) as conn:
+        [card] = lifecycle.persist_cards(
+            conn, [_card(action="buy", entry=100.0, stop_loss=96.0, take_profit=112.0, units=10.0)]
+        )
+        lifecycle.mark_filled(conn, card.signal_id, fill_price=100.0)
+
+        market = _FakeMarket(quotes={"AAPL": 99.5})
+        result = lifecycle.mark_to_market(conn, risk_config, risk_config.initial_bankroll, market)
+
+        assert result.state == AgentStateName.ACTIVE
