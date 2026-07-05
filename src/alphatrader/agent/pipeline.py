@@ -121,6 +121,7 @@ def scan(
                 expires_at=expires_at,
                 initial_bankroll=risk_cfg.initial_bankroll,
                 risk_pct=risk_pct,
+                confidence=proposal.confidence,
                 instrument_class=candidate.instrument_class,
             )
         )

@@ -28,6 +28,7 @@ class SignalCard:
     expires_at: datetime
     initial_bankroll: float
     risk_pct: float
+    confidence: float = 0.0
     instrument_class: str = "stock"
 
 

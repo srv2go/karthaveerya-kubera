@@ -13,6 +13,16 @@ from datetime import UTC, datetime
 from alphatrader.models import Action, Position
 
 
+def position_pnl(action: Action, units: float, entry_price: float, close_price: float) -> float:
+    """Direction-aware P&L for a single position. Shared with signals/lifecycle.py
+    so DB-backed closes and the in-memory Ledger agree on the same math.
+    """
+    diff = close_price - entry_price
+    if action == Action.SELL:
+        diff = -diff
+    return diff * units
+
+
 @dataclass
 class Ledger:
     balance_gbp: float
@@ -44,10 +54,7 @@ class Ledger:
         return position
 
     def _position_pnl(self, position: Position, price: float) -> float:
-        diff = price - position.entry_price
-        if position.action == Action.SELL:
-            diff = -diff
-        return diff * position.units
+        return position_pnl(position.action, position.units, position.entry_price, price)
 
     def close_position(self, position_id: int, close_price: float, reason: str = "") -> float:
         position = self.open_positions.pop(position_id)
