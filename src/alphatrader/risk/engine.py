@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from decimal import ROUND_DOWN, Decimal
 
 import yaml
+
+from alphatrader.models import Action, AgentStateName, RiskVerdict, TradeProposal
 
 # --- Compiled-in ceilings (not configurable) ---------------------------------
 ABS_MAX_RISK_PCT = 1.0
@@ -107,3 +110,111 @@ def spread_floor_ok(
         return True, math.inf
     multiple = stop_distance / spread_abs
     return multiple >= min_multiple, multiple
+
+
+_UNIT_QUANTUM = Decimal("0.000001")  # smallest unit increment; sizing always rounds DOWN
+
+
+def size_position(risk_amount_gbp: float, entry: float, stop_loss: float) -> tuple[float, float]:
+    """Fixed-fractional sizing. Rounds DOWN so realized risk never exceeds
+    risk_amount_gbp, even after floating-point/decimal rounding.
+
+    Returns (units, risk_gbp).
+    """
+    stop_distance = Decimal(str(abs(entry - stop_loss)))
+    if stop_distance <= 0:
+        return 0.0, 0.0
+    risk_amount = Decimal(str(risk_amount_gbp))
+    raw_units = risk_amount / stop_distance
+    units = raw_units.quantize(_UNIT_QUANTUM, rounding=ROUND_DOWN)
+    risk_gbp = units * stop_distance
+    return float(units), float(risk_gbp)
+
+
+def evaluate(
+    proposal: TradeProposal,
+    cfg: RiskConfig,
+    balance_gbp: float,
+    typical_spread_bps: float,
+    open_positions_count: int,
+    agent_state: AgentStateName,
+) -> RiskVerdict:
+    """Validate a TradeProposal and, if accepted, size it. This is the ONLY
+    function that turns an LLM proposal into risk numbers a signal card can
+    show. Every rejection carries a human-readable reason.
+    """
+    if agent_state != AgentStateName.ACTIVE:
+        return RiskVerdict(accepted=False, reason=f"agent halted: {agent_state.value}")
+
+    if proposal.action == Action.HOLD:
+        return RiskVerdict(accepted=False, reason="proposal is hold")
+
+    if proposal.entry is None or proposal.stop_loss is None or proposal.take_profit is None:
+        return RiskVerdict(accepted=False, reason="incomplete proposal: missing entry/stop/target")
+
+    entry, stop_loss, take_profit = proposal.entry, proposal.stop_loss, proposal.take_profit
+
+    if entry <= 0:
+        return RiskVerdict(accepted=False, reason="entry must be positive")
+
+    stop_distance = abs(entry - stop_loss)
+    if stop_distance <= 0:
+        return RiskVerdict(accepted=False, reason="stop_loss equals entry")
+
+    stop_pct = stop_distance / entry * 100.0
+    if stop_pct > cfg.hard_stop_loss_percent:
+        return RiskVerdict(
+            accepted=False,
+            reason=(
+                f"stop distance {stop_pct:.2f}% exceeds hard_stop_loss_percent "
+                f"{cfg.hard_stop_loss_percent}%"
+            ),
+        )
+
+    reward_distance = abs(take_profit - entry)
+    risk_reward = reward_distance / stop_distance
+    if risk_reward < cfg.min_risk_reward_ratio:
+        return RiskVerdict(
+            accepted=False,
+            reason=f"risk/reward {risk_reward:.2f} below minimum {cfg.min_risk_reward_ratio}",
+        )
+
+    spread_ok, spread_multiple = spread_floor_ok(
+        entry, stop_loss, typical_spread_bps, cfg.min_stop_distance_spread_multiple
+    )
+    if not spread_ok:
+        return RiskVerdict(
+            accepted=False,
+            reason=(
+                f"stop distance is only {spread_multiple:.2f}x typical spread, "
+                f"below minimum {cfg.min_stop_distance_spread_multiple}x"
+            ),
+            spread_multiple=spread_multiple,
+        )
+
+    if open_positions_count >= cfg.max_concurrent_positions:
+        return RiskVerdict(
+            accepted=False,
+            reason=f"max_concurrent_positions ({cfg.max_concurrent_positions}) reached",
+        )
+
+    # Note: the £940 cash-preservation floor is a ledger-level circuit breaker
+    # (see risk/state.py::evaluate_breakers), not a per-trade notional check.
+    # When the floor is breached, agent_state becomes PRESERVATION and is
+    # rejected by the "agent halted" check above — so it is never reached here.
+    risk_amount_gbp = balance_gbp * cfg.max_risk_per_trade_percent / 100.0
+    units, risk_gbp = size_position(risk_amount_gbp, entry, stop_loss)
+    if units <= 0:
+        return RiskVerdict(accepted=False, reason="sized to zero units")
+
+    amount_gbp = units * entry
+
+    return RiskVerdict(
+        accepted=True,
+        reason="ok",
+        units=units,
+        risk_gbp=risk_gbp,
+        amount_gbp=amount_gbp,
+        risk_reward=risk_reward,
+        spread_multiple=spread_multiple,
+    )

@@ -5,10 +5,14 @@ These are plain data structures. Sizing/validation decisions are made by
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 class InstrumentClass(str, Enum):
@@ -88,7 +92,7 @@ class Signal(BaseModel):
     rationale: str
     score: float = 0.0
     status: SignalStatus = SignalStatus.PENDING
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     expires_at: datetime | None = None
     fill_price: float | None = None
     close_price: float | None = None
@@ -98,7 +102,7 @@ class Signal(BaseModel):
 class FillReport(BaseModel):
     signal_id: int
     fill_price: float
-    filled_at: datetime = Field(default_factory=datetime.utcnow)
+    filled_at: datetime = Field(default_factory=_utcnow)
 
 
 class Position(BaseModel):
@@ -111,7 +115,7 @@ class Position(BaseModel):
     stop_loss: float
     take_profit: float
     risk_gbp: float
-    opened_at: datetime = Field(default_factory=datetime.utcnow)
+    opened_at: datetime = Field(default_factory=_utcnow)
     closed_at: datetime | None = None
     close_price: float | None = None
     realized_pnl_gbp: float | None = None
@@ -135,4 +139,4 @@ class AgentStateName(str, Enum):
 class AgentState(BaseModel):
     state: AgentStateName = AgentStateName.ACTIVE
     reason: str = ""
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
