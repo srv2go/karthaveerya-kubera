@@ -70,6 +70,18 @@ Only the chat ID configured in `TELEGRAM_CHAT_ID` is served; every other chat is
 the same `RiskEngine` used live, over historical daily candles, to sanity-check the risk plumbing
 and calibrate expectations — see `tests/test_backtest.py` for example fixtures and usage.
 
+## Optional dashboard
+
+A read-only Streamlit dashboard (`src/alphatrader/ui/dashboard.py`) shows pending signal cards,
+open positions with live unrealized P&L, the realized-equity curve, recent signal history, and the
+weekly skipped-vs-taken review — all read directly from the same SQLite ledger. It has no write
+path: it never fills, skips, closes, halts, or resumes anything; every confirmation still happens
+in Telegram. Install and run it separately from the bot:
+```
+pip install -e ".[dashboard]"
+streamlit run src/alphatrader/ui/dashboard.py
+```
+
 ## Running unattended (Raspberry Pi / VPS)
 
 A minimal systemd unit is provided at `deploy/alphatrader.service`. Adjust the paths and user,

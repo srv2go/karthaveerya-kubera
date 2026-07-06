@@ -22,13 +22,9 @@ from telegram.ext import Application
 from alphatrader import db
 from alphatrader.agent import pipeline
 from alphatrader.bot import commands, telegram_app
-from alphatrader.data.alpaca_data import AlpacaDataSource
-from alphatrader.data.ccxt_public import CcxtPublicDataSource
-from alphatrader.data.market import MarketDataService, load_symbols_config
+from alphatrader.data.market import load_symbols_config
 from alphatrader.db import get_connection
-from alphatrader.llm.anthropic_p import AnthropicProvider
-from alphatrader.llm.openai_compat import OpenAICompatProvider
-from alphatrader.llm.provider import LLMProvider
+from alphatrader.factories import build_llm_provider, build_market
 from alphatrader.logging_setup import configure_logging
 from alphatrader.reporting.daily import build_daily_report, build_weekly_review
 from alphatrader.risk.engine import RiskConfig, RiskConfigError, load_risk_config
@@ -66,23 +62,6 @@ def check(settings=None) -> int:
     )
     logger.info("Database initialized at {}", settings.db_path)
     return 0
-
-
-def _build_market(settings: Settings) -> MarketDataService:
-    symbols = load_symbols_config(str(settings.symbols_config_path))
-    stock_source = AlpacaDataSource.from_credentials(
-        settings.alpaca_key_id, settings.alpaca_secret
-    )
-    crypto_source = CcxtPublicDataSource.for_exchange()
-    return MarketDataService(symbols, stock_source, crypto_source)
-
-
-def _build_llm_provider(settings: Settings) -> LLMProvider:
-    if settings.llm_provider == "anthropic":
-        return AnthropicProvider(api_key=settings.llm_api_key, model=settings.llm_model)
-    return OpenAICompatProvider(
-        api_key=settings.llm_api_key, base_url=settings.llm_base_url, model=settings.llm_model
-    )
 
 
 async def _scheduled_scan(application: Application) -> None:
@@ -207,8 +186,8 @@ def run(settings: Settings) -> int:
     risk_cfg: RiskConfig = load_risk_config(str(settings.risk_config_path))
     db.init_db(settings.db_path)
 
-    market = _build_market(settings)
-    provider = _build_llm_provider(settings)
+    market = build_market(settings)
+    provider = build_llm_provider(settings)
     symbols = list(load_symbols_config(str(settings.symbols_config_path)).keys())
 
     application = telegram_app.build_application(
